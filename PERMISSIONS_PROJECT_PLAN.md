@@ -12,10 +12,10 @@ The backend must not require a manually maintained C# permissions file. Backend 
 
 ## Guiding Principles
 
-- `permission.json` owns stable permission identifiers and permission metadata.
+- `permission.json` owns stable permission codes and permission metadata.
 - Generated C# owns backend type safety.
 - Generated TypeScript owns frontend type safety when the frontend cannot or should not import JSON directly.
-- Permission identifiers are not localized text.
+- Permission codes are not localized text.
 - Frontend permission checks are only UI affordances; backend authorization remains authoritative.
 - The project should be independent from `Senlinz.Localization`, but may reuse its generator patterns.
 
@@ -63,6 +63,7 @@ Deliverables:
   - `PermissionGroupDefinition`
   - `PermissionCatalog`
   - optional `PermissionMetadata`
+- Require only `code` for each permission; keep `name`, `description`, `group`, and localization fields optional.
 - Keep abstractions free from Roslyn and ASP.NET dependencies.
 - Target `netstandard2.0` unless a specific API requires a higher target.
 
@@ -71,6 +72,7 @@ Acceptance criteria:
 - A consumer can reference the abstractions package without loading the generator.
 - Runtime contracts are serializable enough for API responses.
 - Contracts do not require frontend-specific concepts.
+- A minimal permission entry such as `{ "code": "users.read" }` is valid.
 
 ## Milestone 2: JSON Schema and Parser
 
@@ -84,10 +86,10 @@ Deliverables:
 
 Acceptance criteria:
 
-- Duplicate permission ids are detected.
+- Duplicate permission codes are detected.
 - Duplicate generated C# identifiers are detected.
-- Missing required fields are detected.
-- Invalid permission id format is detected.
+- Missing required fields, especially `code`, are detected.
+- Invalid permission code format is detected.
 - Parser can be tested independently from Roslyn.
 
 ## Milestone 3: C# Source Generator
@@ -102,16 +104,24 @@ Deliverables:
   - `SenlinzPermissionClassName`
   - `SenlinzPermissionCatalogClassName`
   - `SenlinzPermissionStrict`
+  - `SenlinzPermissionGenerateLString`
+- Resolve the generated namespace in this order:
+  - `SenlinzPermissionNamespace`
+  - `namespace` in `permission.json`
+  - project `RootNamespace`
+  - sanitized assembly name
 - Emit generated C#:
   - `Permissions.g.cs`
   - `PermissionCatalog.g.cs`
   - optional nested group classes
+  - optional `LString` accessors when localization integration is enabled
 - Report diagnostics for invalid input.
 
 Acceptance criteria:
 
 - Consumer code can use `[Authorize(Policy = Permissions.Users.Read)]`.
 - Consumer code can enumerate `PermissionCatalog.All`.
+- Consumer projects do not need to set a namespace when their `RootNamespace` is suitable.
 - No manually maintained backend permission C# file is needed.
 - Incremental generator output is stable across builds.
 
@@ -128,7 +138,7 @@ Deliverables:
 Acceptance criteria:
 
 - Consumer can register all generated permissions in one call.
-- Default behavior uses permission id as policy name.
+- Default behavior uses permission code as policy name.
 - Package does not require the generator package at runtime.
 
 ## Milestone 5: Frontend Generation Tool
@@ -139,7 +149,7 @@ Deliverables:
 - Read the same `permission.json`.
 - Generate TypeScript:
   - permission constants
-  - permission id union type
+  - permission code union type
   - permission catalog array
   - optional grouped export object
 - Provide CLI command:
@@ -206,7 +216,7 @@ Deliverables:
 Acceptance criteria:
 
 - A new user can add one permission in JSON and use it in backend and frontend.
-- Documentation clearly explains why permission ids are stable and non-localized.
+- Documentation clearly explains why permission codes are stable and non-localized.
 
 ## Recommended First Implementation Slice
 
@@ -215,7 +225,7 @@ Build the smallest useful version first:
 1. `Senlinz.Permissions.Abstractions`
 2. JSON parser
 3. C# generator with constants and `PermissionCatalog.All`
-4. duplicate-id and invalid-json diagnostics
+4. duplicate-code and invalid-json diagnostics
 5. one sample app or test project
 
 Defer until after the core generator works:
@@ -223,15 +233,15 @@ Defer until after the core generator works:
 - TypeScript generator
 - ASP.NET policy provider
 - schema hosting
-- localization integration
+- optional `LString` localization integration
 - advanced permission inheritance
 
 ## Risks
 
 - Roslyn source generators cannot write TypeScript files directly into a frontend project. Use a CLI or MSBuild target for frontend generated files.
 - If the JSON schema mixes authorization and UI layout too tightly, backend and frontend changes will become coupled in unhealthy ways.
-- If localized display names live directly in `permission.json`, permission metadata becomes culture-specific. Prefer stable keys or neutral display names plus localization keys.
-- Permission ids must be treated as public contract values. Renaming them is a breaking change.
+- If localized display names live directly in `permission.json`, permission metadata becomes culture-specific. Prefer stable keys, optional neutral display names, or localization keys.
+- Permission codes must be treated as public contract values. Renaming them is a breaking change.
 
 ## Completion Definition
 

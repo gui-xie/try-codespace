@@ -6,7 +6,7 @@ Spec status: complete
 
 `Senlinz.Permissions` is a JSON-driven permission code generation system. It lets application teams define permissions once in `permission.json`, then use generated backend C# and generated frontend TypeScript or raw JSON consumption.
 
-The project is separate from localization. Localization can be layered on top through label keys, but permission identities and authorization policies are stable application contracts.
+The project is separate from localization. Localization can be layered on top through label keys or generated `LString` values, but permission codes and authorization policies are stable application contracts.
 
 ## Goals
 
@@ -22,7 +22,7 @@ The project is separate from localization. Localization can be layered on top th
 - Do not implement a full identity provider.
 - Do not replace ASP.NET Core authorization.
 - Do not treat frontend checks as security enforcement.
-- Do not use localized text as permission ids.
+- Do not use localized text as permission codes.
 - Do not generate frontend files from the Roslyn source generator directly.
 
 ## Package Architecture
@@ -45,15 +45,15 @@ namespace Senlinz.Permissions;
 public sealed class PermissionDefinition
 {
     public PermissionDefinition(
-        string id,
-        string name,
+        string code,
+        string? name = null,
         string? group = null,
         string? description = null,
         string? labelKey = null,
         string? descriptionKey = null,
         IReadOnlyList<string>? tags = null)
     {
-        Id = id;
+        Code = code;
         Name = name;
         Group = group;
         Description = description;
@@ -62,8 +62,8 @@ public sealed class PermissionDefinition
         Tags = tags ?? Array.Empty<string>();
     }
 
-    public string Id { get; }
-    public string Name { get; }
+    public string Code { get; }
+    public string? Name { get; }
     public string? Group { get; }
     public string? Description { get; }
     public string? LabelKey { get; }
@@ -124,19 +124,15 @@ Example:
 {
   "$schema": "https://schemas.senlinz.dev/permissions/v1.json",
   "version": 1,
-  "namespace": "MyApp.Security",
-  "className": "Permissions",
-  "catalogClassName": "PermissionCatalog",
   "groups": [
     {
-      "id": "users",
-      "name": "Users",
+      "code": "users",
       "labelKey": "permissions.groups.users"
     }
   ],
   "permissions": [
     {
-      "id": "users.read",
+      "code": "users.read",
       "name": "View users",
       "group": "users",
       "description": "Allows viewing user records.",
@@ -145,13 +141,8 @@ Example:
       "tags": ["frontend", "backend"]
     },
     {
-      "id": "users.create",
-      "name": "Create users",
-      "group": "users",
-      "description": "Allows creating user records.",
-      "labelKey": "permissions.users.create.label",
-      "descriptionKey": "permissions.users.create.description",
-      "tags": ["frontend", "backend"]
+      "code": "users.create",
+      "group": "users"
     }
   ]
 }
@@ -165,7 +156,7 @@ Root fields:
 | --- | --- | --- | --- |
 | `$schema` | no | string | JSON schema URI. |
 | `version` | yes | integer | Schema version. Initial value is `1`. |
-| `namespace` | no | string | Generated C# namespace override. |
+| `namespace` | no | string | Generated C# namespace override. Used after `SenlinzPermissionNamespace` and before project defaults. |
 | `className` | no | string | Generated permission constants class. Default `Permissions`. |
 | `catalogClassName` | no | string | Generated catalog class. Default `PermissionCatalog`. |
 | `groups` | no | array | Group metadata. |
@@ -175,8 +166,8 @@ Group fields:
 
 | Field | Required | Type | Notes |
 | --- | --- | --- | --- |
-| `id` | yes | string | Stable group id. |
-| `name` | yes | string | Neutral display name. |
+| `code` | yes | string | Stable group code. |
+| `name` | no | string | Neutral display name. |
 | `labelKey` | no | string | Localization key. |
 | `description` | no | string | Neutral description. |
 | `descriptionKey` | no | string | Localization key. |
@@ -186,16 +177,16 @@ Permission fields:
 
 | Field | Required | Type | Notes |
 | --- | --- | --- | --- |
-| `id` | yes | string | Stable permission id and default policy name. |
-| `name` | yes | string | Neutral display name. |
-| `group` | no | string | Group id. |
+| `code` | yes | string | Stable permission code and default policy name. |
+| `name` | no | string | Neutral display name. |
+| `group` | no | string | Group code. |
 | `description` | no | string | Neutral description. |
 | `labelKey` | no | string | Localization key. |
 | `descriptionKey` | no | string | Localization key. |
 | `tags` | no | string array | Filtering metadata. |
 | `order` | no | integer | UI ordering hint. |
 
-Permission id format:
+Permission code format:
 
 ```text
 ^[a-z][a-z0-9]*(\.[a-z][a-z0-9]*)+$
@@ -210,6 +201,17 @@ orders.refund
 system.audit.view
 ```
 
+## Namespace Resolution
+
+Generated C# namespace resolution order:
+
+1. `SenlinzPermissionNamespace` MSBuild property.
+2. `namespace` in `permission.json`.
+3. project `RootNamespace`.
+4. sanitized assembly name.
+
+This allows the minimal setup to inherit the target project's namespace without writing namespace configuration in JSON.
+
 ## MSBuild Properties
 
 The generator package ships a props file:
@@ -221,6 +223,7 @@ The generator package ships a props file:
     <SenlinzPermissionClassName Condition="'$(SenlinzPermissionClassName)' == ''">Permissions</SenlinzPermissionClassName>
     <SenlinzPermissionCatalogClassName Condition="'$(SenlinzPermissionCatalogClassName)' == ''">PermissionCatalog</SenlinzPermissionCatalogClassName>
     <SenlinzPermissionStrict Condition="'$(SenlinzPermissionStrict)' == ''">true</SenlinzPermissionStrict>
+    <SenlinzPermissionGenerateLString Condition="'$(SenlinzPermissionGenerateLString)' == ''">false</SenlinzPermissionGenerateLString>
   </PropertyGroup>
 
   <ItemGroup>
@@ -229,6 +232,7 @@ The generator package ships a props file:
     <CompilerVisibleProperty Include="SenlinzPermissionClassName" />
     <CompilerVisibleProperty Include="SenlinzPermissionCatalogClassName" />
     <CompilerVisibleProperty Include="SenlinzPermissionStrict" />
+    <CompilerVisibleProperty Include="SenlinzPermissionGenerateLString" />
   </ItemGroup>
 
   <ItemGroup>
@@ -277,22 +281,27 @@ public static partial class PermissionCatalog
         {
             new PermissionDefinition(
                 "users.read",
-                "View users",
-                "users",
-                "Allows viewing user records.",
-                "permissions.users.read.label",
-                "permissions.users.read.description",
-                new[] { "frontend", "backend" }),
+                name: "View users",
+                group: "users",
+                description: "Allows viewing user records.",
+                labelKey: "permissions.users.read.label",
+                descriptionKey: "permissions.users.read.description",
+                tags: new[] { "frontend", "backend" }),
 
             new PermissionDefinition(
                 "users.create",
-                "Create users",
-                "users",
-                "Allows creating user records.",
-                "permissions.users.create.label",
-                "permissions.users.create.description",
-                new[] { "frontend", "backend" }),
+                group: "users"),
         };
+}
+```
+
+Optional `LString` output is generated only when `SenlinzPermissionGenerateLString` is `true` and `Senlinz.Localization.Abstractions` is referenced:
+
+```csharp
+public static partial class PermissionL
+{
+    public static readonly LString UsersRead =
+        new LString("permissions.users.read.label", "View users");
 }
 ```
 
@@ -320,9 +329,9 @@ public static class AuthorizationOptionsExtensions
     {
         foreach (var permission in permissions)
         {
-            options.AddPolicy(permission.Id, policy =>
+            options.AddPolicy(permission.Code, policy =>
             {
-                policy.RequireClaim(claimType, permission.Id);
+                policy.RequireClaim(claimType, permission.Code);
             });
         }
 
@@ -362,13 +371,13 @@ export const Permissions = {
   }
 } as const;
 
-export type PermissionId =
+export type PermissionCode =
   | "users.read"
   | "users.create";
 
 export const permissionCatalog = [
   {
-    id: "users.read",
+    code: "users.read",
     name: "View users",
     group: "users",
     description: "Allows viewing user records.",
@@ -377,13 +386,8 @@ export const permissionCatalog = [
     tags: ["frontend", "backend"]
   },
   {
-    id: "users.create",
-    name: "Create users",
-    group: "users",
-    description: "Allows creating user records.",
-    labelKey: "permissions.users.create.label",
-    descriptionKey: "permissions.users.create.description",
-    tags: ["frontend", "backend"]
+    code: "users.create",
+    group: "users"
   }
 ] as const;
 ```
@@ -391,9 +395,9 @@ export const permissionCatalog = [
 Frontend usage:
 
 ```ts
-import { Permissions, type PermissionId } from "./permissions.generated";
+import { Permissions, type PermissionCode } from "./permissions.generated";
 
-function can(userPermissions: readonly PermissionId[], permission: PermissionId) {
+function can(userPermissions: readonly PermissionCode[], permission: PermissionCode) {
   return userPermissions.includes(permission);
 }
 
@@ -402,11 +406,11 @@ can(currentUser.permissions, Permissions.Users.Read);
 
 ## Identifier Generation
 
-Permission id segments become PascalCase identifiers.
+Permission code segments become PascalCase identifiers.
 
 Examples:
 
-| Permission id | C# |
+| Permission code | C# |
 | --- | --- |
 | `users.read` | `Permissions.Users.Read` |
 | `users.create` | `Permissions.Users.Create` |
@@ -418,12 +422,12 @@ Collision example:
 
 ```json
 [
-  { "id": "users.read", "name": "Read users" },
-  { "id": "users-read", "name": "Read users legacy" }
+  { "code": "users.read", "name": "Read users" },
+  { "code": "users-read", "name": "Read users legacy" }
 ]
 ```
 
-The second id is invalid under the v1 id format. If future id formats allow it, the generator must still detect that both map to the same C# identifier path.
+The second code is invalid under the v1 code format. If future code formats allow it, the generator must still detect that both map to the same C# identifier path.
 
 ## Diagnostics
 
@@ -431,8 +435,8 @@ The second id is invalid under the v1 id format. If future id formats allow it, 
 | --- | --- | --- |
 | `SP001` | Error | `permission.json` is invalid JSON. |
 | `SP002` | Error | Required root property is missing. |
-| `SP003` | Error | Permission id is missing or invalid. |
-| `SP004` | Error | Duplicate permission id. |
+| `SP003` | Error | Permission code is missing or invalid. |
+| `SP004` | Error | Duplicate permission code. |
 | `SP005` | Error | Generated C# identifier collision. |
 | `SP006` | Warning | Permission references an unknown group. |
 | `SP007` | Error | Generated namespace or class name is invalid. |
@@ -462,15 +466,15 @@ The parser and emitter should be pure functions to keep tests simple.
 
 Generated output must be deterministic:
 
-- sort permissions by id unless explicit order is needed for UI catalogs
-- sort groups by id unless explicit order is present
+- sort permissions by code unless explicit order is needed for UI catalogs
+- sort groups by code unless explicit order is present
 - preserve JSON order only when documented
 - avoid timestamps
 - avoid machine-specific paths in generated source
 
 ## Security Model
 
-`permission.json` defines permission names and metadata. It does not grant permissions to users.
+`permission.json` defines permission codes and metadata. It does not grant permissions to users.
 
 Actual grants come from identity data:
 
@@ -483,13 +487,13 @@ Backend authorization must validate grants server-side. Frontend usage only cont
 
 ## Localization Integration
 
-Permission ids are not localized.
+Permission codes are not localized.
 
 Recommended pattern:
 
 ```json
 {
-  "id": "users.read",
+  "code": "users.read",
   "name": "View users",
   "labelKey": "permissions.users.read.label",
   "descriptionKey": "permissions.users.read.description"
@@ -511,6 +515,8 @@ Localization files can provide display text:
 }
 ```
 
+When `SenlinzPermissionGenerateLString` is enabled, generated `LString` values should prefer `labelKey` and fall back to a conventional key derived from the permission code, such as `permissions.users.read.label`. The fallback text should use `name` when present, then the raw permission code.
+
 ## Testing Strategy
 
 Parser tests:
@@ -519,7 +525,7 @@ Parser tests:
 - valid full file
 - invalid JSON
 - missing required fields
-- duplicate ids
+- duplicate codes
 - unknown group
 
 Generator tests:
@@ -550,7 +556,7 @@ Schema version starts at `1`.
 
 Breaking JSON schema changes require a new schema version. The parser should reject unsupported future versions unless compatibility is explicitly implemented.
 
-Permission id renames are application-level breaking changes. The package should not silently alias or migrate permission ids.
+Permission code renames are application-level breaking changes. The package should not silently alias or migrate permission codes.
 
 ## Minimum Viable Release
 
