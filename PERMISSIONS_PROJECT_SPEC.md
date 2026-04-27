@@ -4,7 +4,7 @@ Spec status: complete
 
 ## Summary
 
-`Senlinz.Permissions` is a JSON-driven permission code generation system. It lets application teams define permissions once in `permission.json`, then use generated backend C# and generated frontend TypeScript or raw JSON consumption.
+`Senlinz.Permissions` is a JSON-driven permission code generation system. It lets application teams define permissions once in `permission.json`, then use generated backend C# while frontend code consumes the same JSON directly.
 
 The project is separate from localization. Localization can be layered on top through label keys or generated `LString` values, but permission codes and authorization policies are stable application contracts.
 
@@ -13,7 +13,7 @@ The project is separate from localization. Localization can be layered on top th
 - Use `permission.json` as the single permission source of truth.
 - Generate backend C# constants and catalogs.
 - Support ASP.NET Core policy registration.
-- Support frontend consumption through generated TypeScript or direct JSON import.
+- Support frontend consumption through direct JSON import.
 - Provide build-time validation and diagnostics.
 - Keep generated output deterministic and friendly to source control diffing.
 
@@ -23,7 +23,7 @@ The project is separate from localization. Localization can be layered on top th
 - Do not replace ASP.NET Core authorization.
 - Do not treat frontend checks as security enforcement.
 - Do not use localized text as permission codes.
-- Do not generate frontend files from the Roslyn source generator directly.
+- Do not generate frontend TypeScript files.
 
 ## Package Architecture
 
@@ -48,6 +48,7 @@ public sealed class PermissionDefinition
         string code,
         string? name = null,
         string? group = null,
+        IReadOnlyList<string>? requires = null,
         string? description = null,
         string? labelKey = null,
         string? descriptionKey = null,
@@ -56,6 +57,7 @@ public sealed class PermissionDefinition
         Code = code;
         Name = name;
         Group = group;
+        Requires = requires ?? Array.Empty<string>();
         Description = description;
         LabelKey = labelKey;
         DescriptionKey = descriptionKey;
@@ -65,6 +67,7 @@ public sealed class PermissionDefinition
     public string Code { get; }
     public string? Name { get; }
     public string? Group { get; }
+    public IReadOnlyList<string> Requires { get; }
     public string? Description { get; }
     public string? LabelKey { get; }
     public string? DescriptionKey { get; }
@@ -92,17 +95,6 @@ Responsibilities:
 - register authorization policies from generated catalog
 - support configurable claim type
 - support configurable policy naming strategy
-
-### `Senlinz.Permissions.Tool`
-
-CLI package for frontend generation.
-
-Responsibilities:
-
-- parse the same `permission.json`
-- generate TypeScript
-- support CI validation
-- optionally support schema generation
 
 ## JSON File
 
@@ -142,7 +134,8 @@ Example:
     },
     {
       "code": "users.create",
-      "group": "users"
+      "group": "users",
+      "requires": ["users.read"]
     }
   ]
 }
@@ -180,6 +173,7 @@ Permission fields:
 | `code` | yes | string | Stable permission code and default policy name. |
 | `name` | no | string | Neutral display name. |
 | `group` | no | string | Group code. |
+| `requires` | no | string array | Dependent permission codes; granting this permission implies granting dependencies. |
 | `description` | no | string | Neutral description. |
 | `labelKey` | no | string | Localization key. |
 | `descriptionKey` | no | string | Localization key. |
@@ -290,7 +284,8 @@ public static partial class PermissionCatalog
 
             new PermissionDefinition(
                 "users.create",
-                group: "users"),
+                group: "users",
+                requires: new[] { "users.read" }),
         };
 }
 ```
@@ -349,60 +344,9 @@ builder.Services.AddAuthorization(options =>
 });
 ```
 
-## Generated TypeScript
+## Frontend Consumption
 
-The TypeScript generator is a CLI or MSBuild tool, not a Roslyn source generator.
-
-Command:
-
-```bash
-dotnet senlinz-permissions generate-ts \
-  --input permission.json \
-  --output src/security/permissions.generated.ts
-```
-
-Generated output:
-
-```ts
-export const Permissions = {
-  Users: {
-    Read: "users.read",
-    Create: "users.create"
-  }
-} as const;
-
-export type PermissionCode =
-  | "users.read"
-  | "users.create";
-
-export const permissionCatalog = [
-  {
-    code: "users.read",
-    name: "View users",
-    group: "users",
-    description: "Allows viewing user records.",
-    labelKey: "permissions.users.read.label",
-    descriptionKey: "permissions.users.read.description",
-    tags: ["frontend", "backend"]
-  },
-  {
-    code: "users.create",
-    group: "users"
-  }
-] as const;
-```
-
-Frontend usage:
-
-```ts
-import { Permissions, type PermissionCode } from "./permissions.generated";
-
-function can(userPermissions: readonly PermissionCode[], permission: PermissionCode) {
-  return userPermissions.includes(permission);
-}
-
-can(currentUser.permissions, Permissions.Users.Read);
-```
+Frontend applications consume `permission.json` directly through their framework's JSON import support, a copied static asset, or an API response. This package does not generate frontend TypeScript artifacts.
 
 ## Identifier Generation
 
@@ -443,6 +387,8 @@ The second code is invalid under the v1 code format. If future code formats allo
 | `SP008` | Warning | Permission file is missing and strict mode is false. |
 | `SP009` | Error | Permission file is missing and strict mode is true. |
 | `SP010` | Error | Unsupported schema version. |
+| `SP011` | Error | `requires` references non-existent permission code. |
+| `SP012` | Error | `requires` contains circular dependency. |
 
 Diagnostics should include the JSON file path. Line and column should be included when practical.
 
@@ -527,6 +473,8 @@ Parser tests:
 - missing required fields
 - duplicate codes
 - unknown group
+- invalid `requires` reference
+- circular `requires` dependency
 
 Generator tests:
 
@@ -536,13 +484,6 @@ Generator tests:
 - class name override
 - identifier collision
 - missing file behavior
-
-Tool tests:
-
-- TypeScript constants output
-- TypeScript union output
-- deterministic ordering
-- non-zero exit on invalid file
 
 ASP.NET tests:
 
@@ -570,5 +511,3 @@ Version `1.0.0` should include:
 - ASP.NET helper
 - documentation
 - tests
-
-The TypeScript tool can ship in `1.1.0` if release scope needs to stay small, but the architecture should reserve it from the beginning.

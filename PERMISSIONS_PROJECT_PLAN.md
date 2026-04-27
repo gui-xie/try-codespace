@@ -8,13 +8,12 @@ Implementation status: not started
 
 Create a new permissions package family that uses `permission.json` as the single source of truth for both frontend and backend permission definitions.
 
-The backend must not require a manually maintained C# permissions file. Backend constants, catalogs, authorization helpers, and validation diagnostics are generated from JSON. The frontend should consume the same JSON directly or use generated TypeScript created from the same source file.
+The backend must not require a manually maintained C# permissions file. Backend constants, catalogs, authorization helpers, and validation diagnostics are generated from JSON. The frontend should consume the same JSON directly.
 
 ## Guiding Principles
 
 - `permission.json` owns stable permission codes and permission metadata.
 - Generated C# owns backend type safety.
-- Generated TypeScript owns frontend type safety when the frontend cannot or should not import JSON directly.
 - Permission codes are not localized text.
 - Frontend permission checks are only UI affordances; backend authorization remains authoritative.
 - The project should be independent from `Senlinz.Localization`, but may reuse its generator patterns.
@@ -24,33 +23,11 @@ The backend must not require a manually maintained C# permissions file. Backend 
 ```text
 src/
   Senlinz.Permissions/
-    Senlinz.Permissions.csproj
-    Senlinz.Permissions.props
-    PermissionGenerator.cs
-    PermissionJsonParser.cs
-    PermissionCSharpEmitter.cs
-    PermissionDiagnostics.cs
-    Models/
   Senlinz.Permissions.Abstractions/
-    Senlinz.Permissions.Abstractions.csproj
-    PermissionDefinition.cs
-    PermissionGroupDefinition.cs
-    PermissionCatalogOptions.cs
   Senlinz.Permissions.AspNetCore/
-    Senlinz.Permissions.AspNetCore.csproj
-    AuthorizationOptionsExtensions.cs
-    PermissionAuthorizationPolicyProvider.cs
-  Senlinz.Permissions.Tool/
-    Senlinz.Permissions.Tool.csproj
-    Program.cs
-    TypeScriptPermissionEmitter.cs
 tests/
   Senlinz.Permissions.Tests/
-  Senlinz.Permissions.AspNetCore.Tests/
 docs/
-  permission-json.md
-  generated-csharp.md
-  generated-typescript.md
 ```
 
 ## Milestone 1: Core Contracts
@@ -63,7 +40,7 @@ Deliverables:
   - `PermissionGroupDefinition`
   - `PermissionCatalog`
   - optional `PermissionMetadata`
-- Require only `code` for each permission; keep `name`, `description`, `group`, and localization fields optional.
+- Require only `code` for each permission; keep `name`, `description`, `group`, `requires`, and localization fields optional.
 - Keep abstractions free from Roslyn and ASP.NET dependencies.
 - Target `netstandard2.0` unless a specific API requires a higher target.
 
@@ -90,6 +67,7 @@ Acceptance criteria:
 - Duplicate generated C# identifiers are detected.
 - Missing required fields, especially `code`, are detected.
 - Invalid permission code format is detected.
+- Invalid or circular `requires` dependencies are detected.
 - Parser can be tested independently from Roslyn.
 
 ## Milestone 3: C# Source Generator
@@ -141,38 +119,13 @@ Acceptance criteria:
 - Default behavior uses permission code as policy name.
 - Package does not require the generator package at runtime.
 
-## Milestone 5: Frontend Generation Tool
-
-Deliverables:
-
-- Create `Senlinz.Permissions.Tool`.
-- Read the same `permission.json`.
-- Generate TypeScript:
-  - permission constants
-  - permission code union type
-  - permission catalog array
-  - optional grouped export object
-- Provide CLI command:
-
-```bash
-dotnet senlinz-permissions generate-ts --input permission.json --output src/permissions.generated.ts
-```
-
-Acceptance criteria:
-
-- Frontend can import generated TypeScript without reading C#.
-- Generated TypeScript is deterministic.
-- CLI exits non-zero on invalid JSON.
-- Output format is documented.
-
-## Milestone 6: Packaging and Build Integration
+## Milestone 5: Packaging and Build Integration
 
 Deliverables:
 
 - Add NuGet package metadata.
 - Pack generator as analyzer and runtime support as lib.
 - Add `.props` for default `permission.json` discovery.
-- Add optional MSBuild target for TypeScript generation if the CLI is installed.
 
 Acceptance criteria:
 
@@ -185,7 +138,7 @@ Acceptance criteria:
 - Default `permission.json` in project root is discovered.
 - Build diagnostics point at the JSON file where possible.
 
-## Milestone 7: Tests
+## Milestone 6: Tests
 
 Deliverables:
 
@@ -193,16 +146,14 @@ Deliverables:
 - Generator snapshot tests.
 - Diagnostic tests.
 - ASP.NET helper tests.
-- Tool output tests.
 
 Acceptance criteria:
 
 - Generated code compiles in a sample project.
 - Invalid catalogs produce expected diagnostic ids.
 - Generated output is deterministic.
-- Frontend TypeScript output matches approved snapshots.
 
-## Milestone 8: Documentation and Samples
+## Milestone 7: Documentation and Samples
 
 Deliverables:
 
@@ -230,7 +181,6 @@ Build the smallest useful version first:
 
 Defer until after the core generator works:
 
-- TypeScript generator
 - ASP.NET policy provider
 - schema hosting
 - optional `LString` localization integration
@@ -238,7 +188,6 @@ Defer until after the core generator works:
 
 ## Risks
 
-- Roslyn source generators cannot write TypeScript files directly into a frontend project. Use a CLI or MSBuild target for frontend generated files.
 - If the JSON schema mixes authorization and UI layout too tightly, backend and frontend changes will become coupled in unhealthy ways.
 - If localized display names live directly in `permission.json`, permission metadata becomes culture-specific. Prefer stable keys, optional neutral display names, or localization keys.
 - Permission codes must be treated as public contract values. Renaming them is a breaking change.
@@ -250,6 +199,6 @@ The project is complete when:
 - `permission.json` is the only manually edited permission source.
 - Backend C# constants and catalogs are generated at build time.
 - Backend authorization can register generated permissions.
-- Frontend can consume the same JSON or generated TypeScript.
+- Frontend can consume permission.json directly.
 - Invalid permission catalogs fail with actionable diagnostics.
 - Packages and docs are ready for NuGet consumption.
