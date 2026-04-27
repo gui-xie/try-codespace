@@ -2,7 +2,7 @@
 
 Planning status: complete
 
-Implementation status: not started
+Implementation status: initial 1.0 package family implemented
 
 ## Objective
 

@@ -34,7 +34,7 @@ Runtime package with shared models.
 Target framework:
 
 ```text
-netstandard2.0
+netstandard2.1
 ```
 
 Primary types:

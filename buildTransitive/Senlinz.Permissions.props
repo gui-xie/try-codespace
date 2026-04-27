@@ -1,0 +1,22 @@
+<Project>
+  <PropertyGroup>
+    <SenlinzPermissionFile Condition="'$(SenlinzPermissionFile)' == ''">permission.json</SenlinzPermissionFile>
+    <SenlinzPermissionClassName Condition="'$(SenlinzPermissionClassName)' == ''">Permissions</SenlinzPermissionClassName>
+    <SenlinzPermissionCatalogClassName Condition="'$(SenlinzPermissionCatalogClassName)' == ''">PermissionCatalog</SenlinzPermissionCatalogClassName>
+    <SenlinzPermissionStrict Condition="'$(SenlinzPermissionStrict)' == ''">true</SenlinzPermissionStrict>
+    <SenlinzPermissionGenerateLString Condition="'$(SenlinzPermissionGenerateLString)' == ''">false</SenlinzPermissionGenerateLString>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <CompilerVisibleProperty Include="SenlinzPermissionFile" />
+    <CompilerVisibleProperty Include="SenlinzPermissionNamespace" />
+    <CompilerVisibleProperty Include="SenlinzPermissionClassName" />
+    <CompilerVisibleProperty Include="SenlinzPermissionCatalogClassName" />
+    <CompilerVisibleProperty Include="SenlinzPermissionStrict" />
+    <CompilerVisibleProperty Include="SenlinzPermissionGenerateLString" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AdditionalFiles Include="$(SenlinzPermissionFile)" Condition="Exists('$(SenlinzPermissionFile)')" />
+  </ItemGroup>
+</Project>
