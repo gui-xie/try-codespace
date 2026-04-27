@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <PackageId>Senlinz.Permissions.AspNetCore</PackageId>
+    <Description>ASP.NET Core authorization policy helpers for Senlinz permission catalogs.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Senlinz.Permissions.Abstractions/Senlinz.Permissions.Abstractions.csproj" />
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="/" Condition="Exists('../../README.md')" />
+  </ItemGroup>
+</Project>

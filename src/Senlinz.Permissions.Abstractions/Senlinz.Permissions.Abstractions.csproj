@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <PackageId>Senlinz.Permissions.Abstractions</PackageId>
+    <Description>Runtime permission catalog abstractions for JSON-driven Senlinz permissions.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="/" Condition="Exists('../../README.md')" />
+  </ItemGroup>
+</Project>
